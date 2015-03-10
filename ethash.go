@@ -11,6 +11,7 @@ import "C"
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -304,12 +305,15 @@ func (pow *Ethash) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte
 }
 
 func (pow *Ethash) Verify(block pow.Block) bool {
-
+	bsh := block.SeedHash()
+	powsh := pow.GetSeedHash(block.NumberU64())
 	// Make sure the SeedHash is set correctly
-	if bytes.Compare(block.SeedHash(), pow.GetSeedHash(block.NumberU64())) != 0 {
+	if bytes.Compare(bsh, powsh) != 0 {
 		return false
 	}
-
+	
+	// log.Println("HURR pow:", hex.EncodeToString(block.HashNoNonce()), block.MixDigest(), block.Difficulty(), block.NumberU64(), block.Nonce())
+	
 	return pow.verify(block.HashNoNonce(), block.MixDigest(), block.Difficulty(), block.NumberU64(), block.Nonce())
 }
 
@@ -349,6 +353,11 @@ func (pow *Ethash) verify(hash []byte, mixDigest []byte, difficulty *big.Int, bl
 
 	ret := new(C.ethash_return_value)
 
+	log.Println("HURR ethash_light input:", hex.EncodeToString(C.GoBytes(unsafe.Pointer(&pAc.cache), C.int(32))))
+	log.Println("HURR ethash_light input:", pAc.params.full_size)
+	log.Println("HURR ethash_light input:", pAc.params.cache_size)
+	log.Println("HURR ethash_light input:", hex.EncodeToString(hash))
+	log.Println("HURR ethash_light input:", nonce)
 	C.ethash_light(ret, pAc.cache, pAc.params, chash, cnonce)
 
 	result := ethutil.Bytes2Big(C.GoBytes(unsafe.Pointer(&ret.result[0]), C.int(32)))
