@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"math/big"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -69,5 +70,50 @@ func TestGetSeedHash(t *testing.T) {
 	if bytes.Compare(seed1, expectedSeed1) != 0 {
 		log.Printf("seedHash for block 1 should be: %v,\nactual value: %v\n", expectedSeed1, seed1)
 	}
+}
 
+func TestEthashRealParams(t *testing.T) {
+	h, _ := hex.DecodeString("ab4d3689b354bbc3ce5ae4e38e821573cc35ecbb50962bc7b9b9eff7f405d5ed")
+	md, _ := hex.DecodeString("122801f412807c6578082a1bc3d17c82e5454a2951338d444e5adb73582987c2")
+	//d := new(big.Int).Exp(big.NewInt(2), big.NewInt(254), big.NewInt(0))
+	d, _ := big.NewInt(0).SetString("0x020000", 0)
+	n, _ := strconv.ParseUint("1dc31552da67be0a", 16, 64)
+	block := &testBlock{
+		difficulty:  d,
+		hashNoNonce: common.BytesToHash(h),
+		mixDigest:   common.BytesToHash(md),
+		nonce:       n,
+		number:      1,
+	}
+
+	eth := New()
+	//nonce, _ := eth.Search(block, nil)
+	//block.nonce = nonce
+
+	if !eth.Verify(block) {
+		t.Error("Block could not be verified")
+	}
+}
+
+func TestEthashRealParamsNoNonce(t *testing.T) {
+	h, _ := hex.DecodeString("ab4d3689b354bbc3ce5ae4e38e821573cc35ecbb50962bc7b9b9eff7f405d5ed")
+	md, _ := hex.DecodeString("122801f412807c6578082a1bc3d17c82e5454a2951338d444e5adb73582987c2")
+	//d := new(big.Int).Exp(big.NewInt(2), big.NewInt(254), big.NewInt(0))
+	d, _ := big.NewInt(0).SetString("0x020000", 0)
+	//n, _ := strconv.ParseUint("1dc31552da67be0a", 16, 64)
+	block := &testBlock{
+		difficulty:  d,
+		hashNoNonce: common.BytesToHash(h),
+		mixDigest:   common.BytesToHash(md),
+		//nonce:       n,
+		number: 1,
+	}
+
+	eth := New()
+	nonce, _ := eth.Search(block, nil)
+	block.nonce = nonce
+
+	if !eth.Verify(block) {
+		t.Error("Block could not be verified")
+	}
 }

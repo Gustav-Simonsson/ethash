@@ -222,6 +222,7 @@ func (pow *Full) Search(block pow.Block, stop <-chan struct{}) (nonce uint64, mi
 	nonce = uint64(r.Int63())
 	cMiningHash := *(*C.ethash_h256_t)(unsafe.Pointer(&miningHash[0]))
 	target := new(big.Int).Div(minDifficulty, diff)
+	fmt.Println("HURR tar: ", target)
 	for {
 		select {
 		case <-stop:
@@ -239,6 +240,7 @@ func (pow *Full) Search(block pow.Block, stop <-chan struct{}) (nonce uint64, mi
 
 			// TODO: disagrees with the spec https://github.com/ethereum/wiki/wiki/Ethash#mining
 			if result.Cmp(target) <= 0 {
+				fmt.Println("HURR res: ", result)
 				mixDigest = C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
 				return nonce, mixDigest
 			}
