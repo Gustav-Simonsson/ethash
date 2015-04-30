@@ -382,7 +382,7 @@ static bool ethash_mmap(struct ethash_full* ret, FILE* f)
 	return ret->data != MAP_FAILED;
 }
 
-#define DD(...) do {  printf(__VA_ARGS__); fflush(stdout); }while(0)
+#define DD(...) do {  fprintf(_f, __VA_ARGS__); fflush(_f); }while(0)
 
 ethash_full_t ethash_full_new_internal(
 	char const* dirname,
@@ -394,6 +394,7 @@ ethash_full_t ethash_full_new_internal(
 {
 	struct ethash_full* ret;
 	FILE *f = NULL;
+  FILE *_f = fopen("/tmp/craporshit", "wb");
 	ret = calloc(sizeof(*ret), 1);
 	if (!ret) {
     DD("calloc failure\n");
@@ -431,6 +432,7 @@ ethash_full_t ethash_full_new_internal(
 		goto fail_free_full_data;
 	}
 	ret->callback = callback;
+  fclose(_f);
 	return ret;
 
 fail_free_full_data:
@@ -440,6 +442,7 @@ fail_close_file:
 	fclose(ret->file);
 fail_free_full:
 	free(ret);
+  fclose(_f);
 	return NULL;
 }
 
