@@ -163,7 +163,7 @@ bool ethash_compute_full_data(
 	double progress = 0.0f;
 	// now compute full nodes
 	for (unsigned n = 0; n != (full_size / sizeof(node)); ++n) {
-    if (((n % 100) == 0) &&
+    if (((n % 4096) == 0) &&
         callback &&
         callback((unsigned int)(ceil(progress * 100.0f))) != 0) {
       DD("callback error \n");
