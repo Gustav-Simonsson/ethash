@@ -82,7 +82,7 @@ func makeCache(blockNum uint64, test bool) *cache {
 	}
 	light := C.ethash_light_new_internal(size, (*C.ethash_h256_t)(unsafe.Pointer(&seedHash[0])))
 	cache := &cache{light}
-	//runtime.SetFinalizer(cache, freeCache)
+	runtime.SetFinalizer(cache, freeCache)
 	return cache
 }
 
