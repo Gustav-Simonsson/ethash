@@ -382,6 +382,8 @@ static bool ethash_mmap(struct ethash_full* ret, FILE* f)
 	return ret->data != MAP_FAILED;
 }
 
+#define DD(...) do {  printf(__VA_ARGS__); fflush(stdout); }while(0)
+
 ethash_full_t ethash_full_new_internal(
 	char const* dirname,
 	ethash_h256_t const* seed_hash,
@@ -394,31 +396,38 @@ ethash_full_t ethash_full_new_internal(
 	FILE *f = NULL;
 	ret = calloc(sizeof(*ret), 1);
 	if (!ret) {
+    DD("calloc failure\n");
 		return NULL;
 	}
 	ret->file_size = (size_t)full_size;
 	switch (ethash_io_prepare(dirname, *seed_hash, &f, (size_t)full_size, false)) {
 	case ETHASH_IO_FAIL:
+    DD("IO failure\n");
 		goto fail_free_full;
 	case ETHASH_IO_MEMO_MATCH:
 		if (!ethash_mmap(ret, f)) {
+      DD("mmap failed\n");
 			goto fail_close_file;
 		}
 		return ret;
 	case ETHASH_IO_MEMO_SIZE_MISMATCH:
+    DD("size mismatch\n");
 		// if a DAG of same filename but unexpected size is found, silently force new file creation
 		if (ethash_io_prepare(dirname, *seed_hash, &f, (size_t)full_size, true) != ETHASH_IO_MEMO_MISMATCH) {
+      DD("io failure in size mismatch\n");
 			goto fail_free_full;
 		}
 		// fallthrough to the mismatch case here, DO NOT go through match
 	case ETHASH_IO_MEMO_MISMATCH:
 		if (!ethash_mmap(ret, f)) {
+      DD("mmap failure in memo mismatch\n");
 			goto fail_close_file;
 		}
 		break;
 	}
 
 	if (!ethash_compute_full_data(ret->data, full_size, light)) {
+    DD("compute full failure\n");
 		goto fail_free_full_data;
 	}
 	ret->callback = callback;
