@@ -41,6 +41,8 @@
 #include "sha3.h"
 #endif // WITH_CRYPTOPP
 
+#define DD(...) do {  fprintf(_f, __VA_ARGS__); fflush(_f); }while(0)
+
 uint64_t ethash_get_datasize(uint64_t const block_number)
 {
 	assert(block_number / ETHASH_EPOCH_LENGTH < 2048);
@@ -381,8 +383,6 @@ static bool ethash_mmap(struct ethash_full* ret, FILE* f)
 	);
 	return ret->data != MAP_FAILED;
 }
-
-#define DD(...) do {  fprintf(_f, __VA_ARGS__); fflush(_f); }while(0)
 
 ethash_full_t ethash_full_new_internal(
 	char const* dirname,
