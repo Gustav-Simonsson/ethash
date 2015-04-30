@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	//	"reflect"
 	"runtime"
 	"sync"
 	"time"
@@ -129,15 +130,17 @@ func (l *Light) verify(hash common.Hash, mixDigest common.Hash, difficulty *big.
 	chash := *(*C.ethash_h256_t)(unsafe.Pointer(&hash[0]))
 	cnonce := C.uint64_t(nonce)
 	target := new(big.Int).Div(minDifficulty, difficulty)
-
+	//fmt.Println("HURR verify target, diff: ", target, difficulty)
 	cache := l.getCache(blockNum)
 	size := C.ethash_get_datasize(C.uint64_t(blockNum))
 	if l.test {
 		size = dagSizeForTesting
 	}
 	var ret C.ethash_return_value_t
+	fmt.Println("HURR v chash, nonce: ", hash.Hex(), nonce)
 	C.ethash_light_compute_internal(&ret, cache.light, size, chash, cnonce)
 	result := common.Bytes2Big(C.GoBytes(unsafe.Pointer(&ret.result), C.int(32)))
+	fmt.Println("HURR vresult: ", result)
 	return result.Cmp(target) <= 0
 }
 
@@ -222,7 +225,7 @@ func (pow *Full) Search(block pow.Block, stop <-chan struct{}) (nonce uint64, mi
 	nonce = uint64(r.Int63())
 	cMiningHash := *(*C.ethash_h256_t)(unsafe.Pointer(&miningHash[0]))
 	target := new(big.Int).Div(minDifficulty, diff)
-	fmt.Println("HURR tar: ", target)
+	//fmt.Println("HURR target, diff: ", target, diff)
 	for {
 		select {
 		case <-stop:
@@ -234,13 +237,14 @@ func (pow *Full) Search(block pow.Block, stop <-chan struct{}) (nonce uint64, mi
 			elapsed := time.Now().UnixNano() - start
 			hashes := ((float64(1e9) / float64(elapsed)) * float64(i-starti)) / 1000
 			pow.hashRate = int64(hashes)
-
 			ret := C.ethash_full_compute(dag.full, cMiningHash, C.uint64_t(nonce))
+			//fmt.Println("HURR: reflect: ", reflect.TypeOf(ret))
 			result := common.Bytes2Big(C.GoBytes(unsafe.Pointer(&ret.result), C.int(32)))
 
 			// TODO: disagrees with the spec https://github.com/ethereum/wiki/wiki/Ethash#mining
 			if result.Cmp(target) <= 0 {
-				fmt.Println("HURR res: ", result)
+				fmt.Println("HURR s chash, nonce: ", miningHash.Hex(), nonce)
+				fmt.Println("HURR sresult: ", result)
 				mixDigest = C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
 				return nonce, mixDigest
 			}

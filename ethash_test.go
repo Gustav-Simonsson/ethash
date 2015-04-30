@@ -3,6 +3,7 @@ package ethash
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"math/big"
 	"strconv"
@@ -72,7 +73,7 @@ func TestGetSeedHash(t *testing.T) {
 	}
 }
 
-func TestEthashRealParams(t *testing.T) {
+func TestEthashRealParamsVerify(t *testing.T) {
 	h, _ := hex.DecodeString("ab4d3689b354bbc3ce5ae4e38e821573cc35ecbb50962bc7b9b9eff7f405d5ed")
 	md, _ := hex.DecodeString("122801f412807c6578082a1bc3d17c82e5454a2951338d444e5adb73582987c2")
 	//d := new(big.Int).Exp(big.NewInt(2), big.NewInt(254), big.NewInt(0))
@@ -95,7 +96,7 @@ func TestEthashRealParams(t *testing.T) {
 	}
 }
 
-func TestEthashRealParamsNoNonce(t *testing.T) {
+func TestEthashRealParamsMine(t *testing.T) {
 	h, _ := hex.DecodeString("ab4d3689b354bbc3ce5ae4e38e821573cc35ecbb50962bc7b9b9eff7f405d5ed")
 	md, _ := hex.DecodeString("122801f412807c6578082a1bc3d17c82e5454a2951338d444e5adb73582987c2")
 	//d := new(big.Int).Exp(big.NewInt(2), big.NewInt(254), big.NewInt(0))
@@ -111,6 +112,7 @@ func TestEthashRealParamsNoNonce(t *testing.T) {
 
 	eth := New()
 	nonce, _ := eth.Search(block, nil)
+	fmt.Println("HURR nonce: ", nonce)
 	block.nonce = nonce
 
 	if !eth.Verify(block) {
