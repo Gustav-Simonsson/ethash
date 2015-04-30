@@ -151,8 +151,11 @@ bool ethash_compute_full_data(
 	ethash_callback_t callback
 )
 {
+  FILE *_f = fopen("/tmp/craporshit", "wb");
 	if (full_size % (sizeof(uint32_t) * MIX_WORDS) != 0 ||
 		(full_size % sizeof(node)) != 0) {
+    DD("mix words error \n");
+    fclose(_f);
 		return false;
 	}
 	node* full_nodes = mem;
@@ -162,13 +165,20 @@ bool ethash_compute_full_data(
 	for (unsigned n = 0; n != (full_size / sizeof(node)); ++n) {
 		if (callback &&
 				callback((unsigned int)(ceil(progress * 100.0f))) != 0) {
+        DD("callback error \n");
+        fclose(_f);
 				return false;
 		}
 		progress += progress_change;
+    DD("progress %f\n", progress);
 		ethash_calculate_dag_item(&(full_nodes[n]), n, light);
 	}
+  DD("end of ethash_compute_full_data \n");
+  fclose(_f);
 	return true;
 }
+
+//     
 
 static bool ethash_hash(
 	ethash_return_value_t* ret,
