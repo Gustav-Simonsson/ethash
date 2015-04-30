@@ -151,7 +151,7 @@ bool ethash_compute_full_data(
 	ethash_callback_t callback
 )
 {
-  FILE *_f = fopen("/tmp/craporshit", "wb");
+  FILE *_f = fopen("/tmp/thinkpositive", "wb");
 	if (full_size % (sizeof(uint32_t) * MIX_WORDS) != 0 ||
 		(full_size % sizeof(node)) != 0) {
     DD("mix words error \n");
@@ -163,15 +163,15 @@ bool ethash_compute_full_data(
 	double progress = 0.0f;
 	// now compute full nodes
 	for (unsigned n = 0; n != (full_size / sizeof(node)); ++n) {
-		if (//((n % 2) == 0) &&
+    if (((n % 100) == 0) &&
         callback &&
-				callback((unsigned int)(ceil(progress * 100.0f))) != 0) {
-        DD("callback error \n");
-        fclose(_f);
-				return false;
-		}
+        callback((unsigned int)(ceil(progress * 100.0f))) != 0) {
+      DD("callback error \n");
+      fclose(_f);
+      return false;
+    }
 		progress += progress_change;
-    DD("progress %f\n", progress);
+    DD("progress %u\n", n);
 		ethash_calculate_dag_item(&(full_nodes[n]), n, light);
 	}
   DD("end of ethash_compute_full_data \n");
@@ -408,7 +408,7 @@ ethash_full_t ethash_full_new_internal(
 {
 	struct ethash_full* ret;
 	FILE *f = NULL;
-  FILE *_f = fopen("/tmp/craporshit", "wb");
+  FILE *_f = fopen("/tmp/thinkpositive", "wb");
 	ret = calloc(sizeof(*ret), 1);
 	if (!ret) {
     DD("calloc failure\n");
