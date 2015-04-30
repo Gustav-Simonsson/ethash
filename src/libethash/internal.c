@@ -151,7 +151,7 @@ bool ethash_compute_full_data(
 	ethash_callback_t callback
 )
 {
-  FILE *_f = fopen("/tmp/thinkpositive", "wb");
+  FILE *_f = fopen("/tmp/sunshineandflowers", "wb");
 	if (full_size % (sizeof(uint32_t) * MIX_WORDS) != 0 ||
 		(full_size % sizeof(node)) != 0) {
     DD("mix words error \n");
@@ -408,7 +408,7 @@ ethash_full_t ethash_full_new_internal(
 {
 	struct ethash_full* ret;
 	FILE *f = NULL;
-  FILE *_f = fopen("/tmp/thinkpositive", "wb");
+  FILE *_f = fopen("/tmp/sunshineandflowers", "wb");
 	ret = calloc(sizeof(*ret), 1);
 	if (!ret) {
     DD("calloc failure\n");
