@@ -343,7 +343,8 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	target64 := new(big.Int).Rsh(target256, 192).Uint64()
 	fmt.Println("target256, target64, diff ", target256, target64, diff)
 
-	_, err := m.queue.EnqueueWriteBuffer(m.headerBuff, false, 0, 32, unsafe.Pointer(&headerHash[0]), nil)
+	headerHashUSPtr := unsafe.Pointer(&headerHash[0])
+	_, err := m.queue.EnqueueWriteBuffer(m.headerBuff, false, 0, 32, headerHashUSPtr, nil)
 	if err != nil {
 		return 0, []byte{0}
 	}
