@@ -374,6 +374,7 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	// we grab a single random nonce and sets this as argument to the kernel search function
 	// the device will then add each local threads gid to the nonce, creating a unique nonce
 	// for each device computing unit executing in parallel
+	var zero uint32 = 0
 	var checkNonce uint64
 	initNonce := uint64(m.nonceRand.Int63())
 	loops := int64(0)
@@ -471,6 +472,13 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 						fmt.Println("OpenCL Search returning: n, mix", checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32)))
 						return checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
 					}
+
+					_, err := m.queue.EnqueueWriteBuffer(m.searchBuffers[buf], false, 0, 4, unsafe.Pointer(&zero), nil)
+					if err != nil {
+						fmt.Println("Error in Search cl: EnqueueWriteBuffer", err)
+						return 0, []byte{0}
+					}
+
 				}
 			}
 			_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[buf], cres, nil)
