@@ -156,7 +156,7 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 
 	// TODO: support OpenCL 1.1,  2.0 ?
 	// TODO: more fine grained version logic
-	if deviceVersion != "OpenCL 1.2" {
+	if !strings.Contains(deviceVersion, "OpenCL 1.2") {
 		fmt.Println("Device must be of OpenCL version 1.2")
 		return nil, fmt.Errorf("opencl version not supported")
 	}
