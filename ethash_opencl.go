@@ -87,9 +87,6 @@ type OpenCL struct {
 	device        *cl.Device
 	workGroupSize int
 
-	openCL11 bool // sometimes we need to check OpenCL version
-	openCL12 bool
-
 	nonceRand *mrand.Rand
 	result    common.Hash
 
@@ -140,12 +137,13 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 	device := devices[0]
 	devMaxAlloc := uint64(device.MaxMemAllocSize())
 	devGlobalMem := uint64(device.GlobalMemSize())
+	deviceVersion := device.Version()
 
 	fmt.Println("=========== OpenCL initialisation ===========")
 	fmt.Println("Selected platform       ", platform.Name())
 	fmt.Println("Selected device         ", device.Name())
 	fmt.Println("Vendor                  ", device.Vendor())
-	fmt.Println("Version                 ", device.Version())
+	fmt.Println("Version                 ", deviceVersion)
 	fmt.Println("Driver version          ", device.DriverVersion())
 	fmt.Println("Address bits            ", device.AddressBits())
 	fmt.Println("Max clock freq          ", device.MaxClockFrequency())
@@ -156,18 +154,11 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 	fmt.Println("Max work group size     ", device.MaxWorkGroupSize())
 	fmt.Println("Max work item sizes     ", device.MaxWorkItemSizes())
 
+	// TODO: support OpenCL 1.1,  2.0 ?
 	// TODO: more fine grained version logic
-	if device.Version() == "OpenCL 1.0" {
-		fmt.Println("Device OpenCL version not supported: ", device.Version())
+	if deviceVersion != "OpenCL 1.2" {
+		fmt.Println("Device must be of OpenCL version 1.2")
 		return nil, fmt.Errorf("opencl version not supported")
-	}
-
-	var cl11, cl12 bool
-	if device.Version() == "OpenCL 1.1" {
-		cl11 = true
-	}
-	if device.Version() == "OpenCL 1.2" {
-		cl12 = true
 	}
 
 	fmt.Println("===============================================")
@@ -340,9 +331,6 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 			device:        device,
 			workGroupSize: workGroupSize,
 
-			openCL11: cl11,
-			openCL12: cl12,
-
 			nonceRand: nonceRand,
 		},
 		nil
@@ -355,25 +343,72 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	target64 := new(big.Int).Rsh(target256, 192).Uint64()
 	fmt.Println("target256, target64, diff ", target256, target64, diff)
 
-	err := setupSearch(&block, &headerHash, target64, m)
+	_, err := m.queue.EnqueueWriteBuffer(m.headerBuff, false, 0, 32, unsafe.Pointer(&headerHash[0]), nil)
 	if err != nil {
-		fmt.Println("Error in Search setup: ", err)
 		return 0, []byte{0}
 	}
 
-	// we wait for this one before returning
-	var preReturnEvent *cl.Event
-	if m.openCL12 {
-		preReturnEvent, err = m.ctx.CreateUserEvent()
+	var zero uint32 = 0
+	for i := 0; i < searchBuffSize; i++ {
+		_, err := m.queue.EnqueueWriteBuffer(m.searchBuffers[i], false, 0, 4, unsafe.Pointer(&zero), nil)
 		if err != nil {
 			return 0, []byte{0}
 		}
 	}
 
+	// we wait for this one before returning
+	var preReturnEvent *cl.Event
+	preReturnEvent, err = m.ctx.CreateUserEvent()
+	if err != nil {
+		return 0, []byte{0}
+	}
+	_, err = m.queue.EnqueueBarrierWithWaitList([]*cl.Event{preReturnEvent})
+	if err != nil {
+		return 0, []byte{0}
+	}
+
+	// wait for all search buffers to complete
+	m.queue.Finish()
+
+	err = m.searchKernel.SetArg(1, m.headerBuff)
+	if err != nil {
+		return 0, []byte{0}
+	}
+
+	argPos := 2
+	for i := uint64(0); i < m.dagChunksNum; i++ {
+		err = m.searchKernel.SetArg(argPos, m.dagChunks[i])
+		if err != nil {
+			return 0, []byte{0}
+		}
+		argPos++
+	}
+	err = m.searchKernel.SetArg(argPos+1, target64)
+	if err != nil {
+		return 0, []byte{0}
+	}
+	err = m.searchKernel.SetArg(argPos+2, uint32(math.MaxUint32))
+	if err != nil {
+		return 0, []byte{0}
+	}
+
+	if err != nil {
+		fmt.Println("Error in Search setup: ", err)
+		return 0, []byte{0}
+	}
+
+	n, md := searchLoop(m, &target64, target256, &headerHash, preReturnEvent)
+	return n, md
+}
+
+func searchLoop(m *OpenCL, target64 *uint64, target256 *big.Int, headerHash *common.Hash, preReturnEvent *cl.Event) (uint64, []byte) {
+
 	buf := 0
 	// we grab a single random nonce and sets this as argument to the kernel search function
 	// the device will then add each local threads gid to the nonce, creating a unique nonce
 	// for each device computing unit executing in parallel
+	var err error
+	headerHashCPtr := hashToH256(*headerHash)
 	var checkNonce uint64
 	initNonce := uint64(m.nonceRand.Int63())
 	loops := int64(0)
@@ -458,16 +493,15 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 					// in C on the CPU.
 					// TODO: if we're confident OpenCL always returns a valid nonce, we can skip this check
 					// for performance
-					ret := C.ethash_light_compute_internal(m.ethash.Light.current.ptr, ds, hashToH256(headerHash), cn)
+					ret := C.ethash_light_compute_internal(m.ethash.Light.current.ptr, ds, headerHashCPtr, cn)
 					if ret.success && h256ToHash(ret.result).Big().Cmp(target256) <= 0 {
 						// prioritise returning mined solution over errors
 						_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[buf], cres, nil)
 						defer logErr(err)
-						if m.openCL12 {
-							// TODO: return result before waiting here
-							err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
-							defer logErr(err)
-						}
+						// TODO: return result before waiting here
+						err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
+						defer logErr(err)
+
 						fmt.Println("OpenCL Search returning: n, mix", checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32)))
 						return checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
 					}
@@ -480,55 +514,12 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 			}
 		}
 	}
-	if m.openCL12 {
-		err := cl.WaitForEvents([]*cl.Event{preReturnEvent})
-		if err != nil {
-			fmt.Println("Error in Search clWaitForEvents: ", err)
-			return 0, []byte{0}
-		}
+	err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
+	if err != nil {
+		fmt.Println("Error in Search clWaitForEvents: ", err)
+		return 0, []byte{0}
 	}
 	return 0, []byte{0}
-}
-
-func setupSearch(block *pow.Block, headerHash *common.Hash, target uint64, m *OpenCL) error {
-	_, err := m.queue.EnqueueWriteBuffer(m.headerBuff, false, 0, 32, unsafe.Pointer(&headerHash[0]), nil)
-	if err != nil {
-		return err
-	}
-
-	var zero uint32 = 0
-	for i := 0; i < searchBuffSize; i++ {
-		_, err := m.queue.EnqueueWriteBuffer(m.searchBuffers[i], false, 0, 4, unsafe.Pointer(&zero), nil)
-		if err != nil {
-			return err
-		}
-	}
-
-	// wait for all search buffers to complete
-	m.queue.Finish()
-
-	err = m.searchKernel.SetArg(1, m.headerBuff)
-	if err != nil {
-		return argErr(err)
-	}
-
-	argPos := 2
-	for i := uint64(0); i < m.dagChunksNum; i++ {
-		err = m.searchKernel.SetArg(argPos, m.dagChunks[i])
-		if err != nil {
-			return argErr(err)
-		}
-		argPos++
-	}
-	err = m.searchKernel.SetArg(argPos+1, target)
-	if err != nil {
-		return argErr(err)
-	}
-	err = m.searchKernel.SetArg(argPos+2, uint32(math.MaxUint32))
-	if err != nil {
-		return argErr(err)
-	}
-	return nil
 }
 
 func (m *OpenCL) Verify(block pow.Block) bool {
