@@ -96,6 +96,11 @@ type OpenCL struct {
 	hashRate int32 // Go atomics & uint64 have some issues, int32 is supported on all platforms
 }
 
+type pendingSearch struct {
+	bufIndex   uint32
+	startNonce uint64
+}
+
 const (
 	SIZEOF_UINT32 = 4
 
@@ -348,9 +353,10 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 		nil
 }
 
+// TODO: refactor Search and setupSearch into something simpler
 func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) {
 	headerHash := block.HashNoNonce()
-  //headerHash := common.HexToHash("b832154e35c5480afda424509c49885fcf23d1467a375e24929de07226993c77")
+	//headerHash := common.HexToHash("b832154e35c5480afda424509c49885fcf23d1467a375e24929de07226993c77")
 	diff := block.Difficulty()
 	target256 := new(big.Int).Div(MaxUint256, diff)
 	target64 := new(big.Int).Rsh(target256, 192).Uint64()
@@ -371,18 +377,18 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 		}
 	}
 
-	buf := 0
-	// we grab a single random nonce and sets this as argument to the kernel search function
-	// the device will then add each local threads gid to the nonce, creating a unique nonce
-	// for each device computing unit executing in parallel
+	pending := make([]pendingSearch, 0, searchBuffSize)
+	var p *pendingSearch
+	searchBufIndex := uint32(0)
 	var zero uint32 = 0
 	var checkNonce uint64
-	//initNonce := uint64(18008317421559425353)
-  initNonce := uint64(m.nonceRand.Int63())
 	loops := int64(0)
 	prevHashRate := int32(0)
 	start := time.Now().UnixNano()
-  //  nonce := initNonce
+	// we grab a single random nonce and sets this as argument to the kernel search function
+	// the device will then add each local threads gid to the nonce, creating a unique nonce
+	// for each device computing unit executing in parallel
+	initNonce := uint64(m.nonceRand.Int63())
 	for nonce := initNonce; ; nonce += uint64(globalWorkSize) {
 
 		if (loops % (1 << 8)) == 0 {
@@ -395,7 +401,7 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 		}
 		loops++
 
-		err = m.searchKernel.SetArg(0, m.searchBuffers[buf])
+		err = m.searchKernel.SetArg(0, m.searchBuffers[searchBufIndex])
 		if err != nil {
 			fmt.Println("Error in Search clSetKernelArg : ", err)
 			return 0, []byte{0}
@@ -425,12 +431,13 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 			return 0, []byte{0}
 		}
 
-		// TODO: why do we only check the last search buffer?
-		buf = (buf + 1) % searchBuffSize
+		pending = append(pending, pendingSearch{bufIndex: searchBufIndex, startNonce: nonce})
 
-		if buf == 0 {
-			//fmt.Println("FUNKY: ", buf, m.searchBuffers[buf])
-			cres, _, err := m.queue.EnqueueMapBuffer(m.searchBuffers[0], true,
+		searchBufIndex = (searchBufIndex + 1) % searchBuffSize
+
+		if len(pending) == searchBuffSize {
+			p = &(pending[searchBufIndex])
+			cres, _, err := m.queue.EnqueueMapBuffer(m.searchBuffers[p.bufIndex], true,
 				cl.MapFlagRead, 0, (1+maxSearchResults)*SIZEOF_UINT32,
 				nil)
 			if err != nil {
@@ -439,18 +446,14 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 			}
 
 			results := cres.ByteSlice()
-			//fmt.Println("FUNKY: len ByteSlice", len(results))
-			//fmt.Println("FUNKY: results", hex.EncodeToString(results))
 			nfound := binary.LittleEndian.Uint32(results)
-      //fmt.Println("FUNKY: ", nfound)
 			nfound = uint32(math.Min(float64(nfound), float64(maxSearchResults)))
-			//nonces := make([]uint64, maxSearchResults)
 			// OpenCL returns the offsets from the start nonce
 			for i := uint32(0); i < nfound; i++ {
 				lo := (i + 1) * SIZEOF_UINT32
 				hi := (i + 2) * SIZEOF_UINT32
 				upperNonce := uint64(binary.LittleEndian.Uint32(results[lo:hi]))
-				checkNonce = nonce + upperNonce
+				checkNonce = p.startNonce + upperNonce
 				//fmt.Printf("FUNKY: start n: %v results n: %v full n: %v\n", nonce, upperNonce, checkNonce)
 				if checkNonce != 0 {
 					//fmt.Println("FUNKY2: i, n: ", i, checkNonce)
@@ -459,35 +462,36 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 					//fmt.Println("FUNKY: light compute args: ", m.ethash.Light.current.ptr, ds, hashToH256(headerHash), cn)
 					// We verify that the nonce is indeed a solution by calling Ethash verification function
 					// in C on the CPU.
-					// TODO: if we're confident OpenCL always returns a valid nonce, we can skip this check
-					// for performance
 					ret := C.ethash_light_compute_internal(m.ethash.Light.current.ptr, ds, hashToH256(headerHash), cn)
-          // TODO: return result first
+					// TODO: return result first
 					if ret.success && h256ToHash(ret.result).Big().Cmp(target256) <= 0 {
-          //fmt.Println("FUNKY: verified hash")
-						_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[buf], cres, nil)
-						//defer logErr(err)
+						_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[p.bufIndex], cres, nil)
+						if err != nil {
+							fmt.Println("Error in Search clEnqueueUnmapMemObject: ", err)
+						}
 						if m.openCL12 {
 							err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
-							//defer logErr(err)
+							if err != nil {
+								fmt.Println("Error in Search WaitForEvents: ", err)
+							}
 						}
 						fmt.Println("OpenCL Search returning: n, mix", checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32)))
 						return checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
 					}
 
-					_, err := m.queue.EnqueueWriteBuffer(m.searchBuffers[buf], false, 0, 4, unsafe.Pointer(&zero), nil)
+					_, err := m.queue.EnqueueWriteBuffer(m.searchBuffers[p.bufIndex], false, 0, 4, unsafe.Pointer(&zero), nil)
 					if err != nil {
 						fmt.Println("Error in Search cl: EnqueueWriteBuffer", err)
 						return 0, []byte{0}
 					}
-
 				}
 			}
-			_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[buf], cres, nil)
+			_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[p.bufIndex], cres, nil)
 			if err != nil {
 				fmt.Println("Error in Search clEnqueueUnMapMemObject: ", err)
 				return 0, []byte{0}
 			}
+			pending = append(pending[:searchBufIndex], pending[searchBufIndex+1:]...)
 		}
 	}
 	if m.openCL12 {
