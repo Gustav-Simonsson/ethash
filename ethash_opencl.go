@@ -349,8 +349,8 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 }
 
 func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) {
-	//headerHash := block.HashNoNonce()
-  headerHash := common.HexToHash("b832154e35c5480afda424509c49885fcf23d1467a375e24929de07226993c77")
+	headerHash := block.HashNoNonce()
+  //headerHash := common.HexToHash("b832154e35c5480afda424509c49885fcf23d1467a375e24929de07226993c77")
 	diff := block.Difficulty()
 	target256 := new(big.Int).Div(MaxUint256, diff)
 	target64 := new(big.Int).Rsh(target256, 192).Uint64()
@@ -377,12 +377,13 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	// for each device computing unit executing in parallel
 	var zero uint32 = 0
 	var checkNonce uint64
-	initNonce := uint64(18008317421559425353)  //uint64(m.nonceRand.Int63())
+	//initNonce := uint64(18008317421559425353)
+  initNonce := uint64(m.nonceRand.Int63())
 	loops := int64(0)
 	prevHashRate := int32(0)
 	start := time.Now().UnixNano()
-  nonce := initNonce
-	for {//nonce := initNonce; ; nonce += uint64(globalWorkSize) {
+  //  nonce := initNonce
+	for nonce := initNonce; ; nonce += uint64(globalWorkSize) {
 
 		if (loops % (1 << 8)) == 0 {
 			elapsed := time.Now().UnixNano() - start
@@ -441,7 +442,7 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 			//fmt.Println("FUNKY: len ByteSlice", len(results))
 			//fmt.Println("FUNKY: results", hex.EncodeToString(results))
 			nfound := binary.LittleEndian.Uint32(results)
-      fmt.Println("FUNKY: ", nfound)
+      //fmt.Println("FUNKY: ", nfound)
 			nfound = uint32(math.Min(float64(nfound), float64(maxSearchResults)))
 			//nonces := make([]uint64, maxSearchResults)
 			// OpenCL returns the offsets from the start nonce
@@ -450,7 +451,7 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 				hi := (i + 2) * SIZEOF_UINT32
 				upperNonce := uint64(binary.LittleEndian.Uint32(results[lo:hi]))
 				checkNonce = nonce + upperNonce
-				fmt.Printf("FUNKY: start n: %v results n: %v full n: %v\n", nonce, upperNonce, checkNonce)
+				//fmt.Printf("FUNKY: start n: %v results n: %v full n: %v\n", nonce, upperNonce, checkNonce)
 				if checkNonce != 0 {
 					//fmt.Println("FUNKY2: i, n: ", i, checkNonce)
 					cn := C.uint64_t(checkNonce)
@@ -461,14 +462,14 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 					// TODO: if we're confident OpenCL always returns a valid nonce, we can skip this check
 					// for performance
 					ret := C.ethash_light_compute_internal(m.ethash.Light.current.ptr, ds, hashToH256(headerHash), cn)
+          // TODO: return result first
 					if ret.success && h256ToHash(ret.result).Big().Cmp(target256) <= 0 {
-						// prioritise returning mined solution over errors
+          //fmt.Println("FUNKY: verified hash")
 						_, err = m.queue.EnqueueUnmapMemObject(m.searchBuffers[buf], cres, nil)
-						defer logErr(err)
+						//defer logErr(err)
 						if m.openCL12 {
-							// TODO: return result before waiting here
 							err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
-							defer logErr(err)
+							//defer logErr(err)
 						}
 						fmt.Println("OpenCL Search returning: n, mix", checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32)))
 						return checkNonce, C.GoBytes(unsafe.Pointer(&ret.mix_hash), C.int(32))
