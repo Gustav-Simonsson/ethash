@@ -103,7 +103,7 @@ const (
 	// See [4]
 	workGroupSize    = 32 // must be multiple of 8
 	maxSearchResults = 63
-	searchBuffSize   = 2
+	searchBuffSize   = 1
 	globalWorkSize   = 1024 * 256
 
 	//gpuMemMargin = 1024 * 1024 * 512
@@ -363,7 +363,7 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	if err != nil {
 		return 0, []byte{0}
 	}
-	_, err = m.queue.EnqueueBarrierWithWaitList([]*cl.Event{preReturnEvent})
+//  	_, err = m.queue.EnqueueBarrierWithWaitList([]*cl.Event{preReturnEvent})
 	if err != nil {
 		return 0, []byte{0}
 	}
@@ -458,9 +458,9 @@ func searchLoop(m *OpenCL, target64 *uint64, target256 *big.Int, headerHash *com
 		}
 
 		// TODO: why do we only check the last search buffer?
-		buf = (buf + 1) % searchBuffSize
+//		buf = (buf + 1) % searchBuffSize
 
-		if buf == 0 {
+	//	if buf == 0 {
 			//fmt.Println("FUNKY: ", buf, m.searchBuffers[buf])
 			cres, _, err := m.queue.EnqueueMapBuffer(m.searchBuffers[0], true,
 				cl.MapFlagRead, 0, (1+maxSearchResults)*SIZEOF_UINT32,
@@ -486,7 +486,7 @@ func searchLoop(m *OpenCL, target64 *uint64, target256 *big.Int, headerHash *com
 				//fmt.Println("FUNKY: checkNonce", checkNonce)
 				//fmt.Println("FUNKY: i, n: ", i, checkNonce)
 				if checkNonce != 0 {
-					//fmt.Println("FUNKY2: i, n: ", i, checkNonce)
+					fmt.Println("FUNKY2: i, upperNonce, checkNonce: ", i, upperNonce, checkNonce)
 					cn := C.uint64_t(checkNonce)
 					ds := C.uint64_t(m.dagSize)
 					//fmt.Println("FUNKY: light compute args: ", m.ethash.Light.current.ptr, ds, hashToH256(headerHash), cn)
@@ -513,7 +513,7 @@ func searchLoop(m *OpenCL, target64 *uint64, target256 *big.Int, headerHash *com
 				fmt.Println("Error in Search clEnqueueUnMapMemObject: ", err)
 				return 0, []byte{0}
 			}
-		}
+		
 	}
 	err = cl.WaitForEvents([]*cl.Event{preReturnEvent})
 	if err != nil {
