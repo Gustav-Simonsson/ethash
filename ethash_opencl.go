@@ -349,7 +349,8 @@ func NewOpenCL(blockNum uint64, dagChunksNum uint64) (*OpenCL, error) {
 }
 
 func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) {
-	headerHash := block.HashNoNonce()
+	//headerHash := block.HashNoNonce()
+  headerHash := common.HexToHash("b832154e35c5480afda424509c49885fcf23d1467a375e24929de07226993c77")
 	diff := block.Difficulty()
 	target256 := new(big.Int).Div(MaxUint256, diff)
 	target64 := new(big.Int).Rsh(target256, 192).Uint64()
@@ -376,11 +377,12 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 	// for each device computing unit executing in parallel
 	var zero uint32 = 0
 	var checkNonce uint64
-	initNonce := uint64(m.nonceRand.Int63())
+	initNonce := uint64(18008317421559425353)  //uint64(m.nonceRand.Int63())
 	loops := int64(0)
 	prevHashRate := int32(0)
 	start := time.Now().UnixNano()
-	for nonce := initNonce; ; nonce += uint64(globalWorkSize) {
+  nonce := initNonce
+	for {//nonce := initNonce; ; nonce += uint64(globalWorkSize) {
 
 		if (loops % (1 << 8)) == 0 {
 			elapsed := time.Now().UnixNano() - start
@@ -438,18 +440,17 @@ func (m *OpenCL) Search(block pow.Block, stop <-chan struct{}) (uint64, []byte) 
 			results := cres.ByteSlice()
 			//fmt.Println("FUNKY: len ByteSlice", len(results))
 			//fmt.Println("FUNKY: results", hex.EncodeToString(results))
-			nfound := binary.BigEndian.Uint32(results)
+			nfound := binary.LittleEndian.Uint32(results)
+      fmt.Println("FUNKY: ", nfound)
 			nfound = uint32(math.Min(float64(nfound), float64(maxSearchResults)))
 			//nonces := make([]uint64, maxSearchResults)
 			// OpenCL returns the offsets from the start nonce
 			for i := uint32(0); i < nfound; i++ {
 				lo := (i + 1) * SIZEOF_UINT32
 				hi := (i + 2) * SIZEOF_UINT32
-				upperNonce := uint64(binary.BigEndian.Uint32(results[lo:hi]))
+				upperNonce := uint64(binary.LittleEndian.Uint32(results[lo:hi]))
 				checkNonce = nonce + upperNonce
-				//fmt.Println("FUNKY: upperNonce", upperNonce)
-				//fmt.Println("FUNKY: checkNonce", checkNonce)
-				//fmt.Println("FUNKY: i, n: ", i, checkNonce)
+				fmt.Printf("FUNKY: start n: %v results n: %v full n: %v\n", nonce, upperNonce, checkNonce)
 				if checkNonce != 0 {
 					//fmt.Println("FUNKY2: i, n: ", i, checkNonce)
 					cn := C.uint64_t(checkNonce)
