@@ -232,23 +232,6 @@ func InitCL(blockNum uint64, c *OpenCLMiner) error {
 			devices = append(devices, d)
 		}
 	}
-	// use the ids we got on cmd line
-	found := true
-	for _, d := range c.deviceIds {
-		f := false
-		for i := 0; i < len(devices); i++ {
-			if d == i {
-				f = true
-			}
-		}
-		if !f {
-			found = false
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("Device id not found. See available device ids with: geth gpuinfo")
-	}
 
 	pow := New()
 	// generates DAG if we don't have it
@@ -260,10 +243,14 @@ func InitCL(blockNum uint64, c *OpenCLMiner) error {
 	dagSize := pow.getDAGSize(blockNum)
 	c.dagSize = dagSize
 
-	for i := 0; i < len(c.deviceIds); i++ {
-		err := initCLDevice(i, devices[i], c)
-		if err != nil {
-			return err
+	for _, id := range c.deviceIds {
+		if id > len(devices)-1 {
+			return fmt.Errorf("Device id not found. See available device ids with: geth gpuinfo")
+		} else {
+			err := initCLDevice(id, devices[id], c)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if len(c.devices) == 0 {
