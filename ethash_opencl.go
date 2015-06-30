@@ -232,7 +232,8 @@ func InitCL(blockNum uint64, c *OpenCLMiner) error {
 			devices = append(devices, d)
 		}
 	}
-
+	fmt.Println("FUNKY: ds", devices)
+	fmt.Println("FUNKY: c.ds", c.deviceIds)
 	// use the ids we got on cmd line
 	for i := 0; i < len(devices); i++ {
 		for j := 0; j < len(c.deviceIds); j++ {
