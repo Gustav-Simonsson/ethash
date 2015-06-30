@@ -303,6 +303,8 @@ func initCLDevice(deviceId int, device *cl.Device, c *OpenCLMiner) error {
 		//return fmt.Errorf("Insufficient device memory")
 	}
 
+	fmt.Printf("Initialising device %v: %v\n", deviceId, device.Name())
+
 	context, err := cl.CreateContext([]*cl.Device{device})
 	if err != nil {
 		return fmt.Errorf("failed creating context:", err)
