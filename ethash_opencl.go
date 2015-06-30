@@ -232,15 +232,22 @@ func InitCL(blockNum uint64, c *OpenCLMiner) error {
 			devices = append(devices, d)
 		}
 	}
-	fmt.Println("FUNKY: ds", devices)
-	fmt.Println("FUNKY: c.ds", c.deviceIds)
 	// use the ids we got on cmd line
-	for i := 0; i < len(devices); i++ {
-		for j := 0; j < len(c.deviceIds); j++ {
-			if c.deviceIds[j] != i {
-				return fmt.Errorf("Device id not found: %v See device ids with: geth gpuinfo", err)
+	found := true
+	for _, d := range c.deviceIds {
+		f := false
+		for i := 0; i < len(devices); i++ {
+			if d == i {
+				f = true
 			}
 		}
+		if !f {
+			found = false
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("Device id not found. See available device ids with: geth gpuinfo")
 	}
 
 	pow := New()
