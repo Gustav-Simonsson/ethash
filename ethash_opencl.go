@@ -385,6 +385,7 @@ func initCLDevice(deviceId int, device *cl.Device, c *OpenCLMiner) error {
 		openCL11: cl11,
 		openCL12: cl12,
 
+		dagBuf:        dagBuf,
 		headerBuf:     headerBuf,
 		searchBuffers: searchBuffers,
 
