@@ -340,7 +340,8 @@ func initCLDevice(deviceId int, device *cl.Device, c *OpenCLMiner) error {
 
 	// TODO: patch up Go bindings to work with size_t, will overflow if > maxint32
 	// TODO: fuck. shit's gonna overflow soon
-	dagBuf, err := context.CreateEmptyBuffer(cl.MemReadOnly, int(c.dagSize))
+	dagBuf := *(new(*cl.MemObject))
+	dagBuf, err = context.CreateEmptyBuffer(cl.MemReadOnly, int(c.dagSize))
 	if err != nil {
 		return fmt.Errorf("allocating dag buf failed: ", err)
 	}
@@ -460,19 +461,18 @@ func (c *OpenCLMiner) Search(block pow.Block, stop <-chan struct{}, index int) (
 		return 0, []byte{0}
 	}
 
-	argPos := 2
-	err = d.searchKernel.SetArg(argPos, d.dagBuf)
+	err = d.searchKernel.SetArg(2, d.dagBuf)
 	if err != nil {
 		fmt.Println("Error in Search clSetKernelArg : ", err)
 		return 0, []byte{0}
 	}
 
-	err = d.searchKernel.SetArg(argPos+1, target64)
+	err = d.searchKernel.SetArg(4, target64)
 	if err != nil {
 		fmt.Println("Error in Search clSetKernelArg : ", err)
 		return 0, []byte{0}
 	}
-	err = d.searchKernel.SetArg(argPos+2, uint32(math.MaxUint32))
+	err = d.searchKernel.SetArg(5, uint32(math.MaxUint32))
 	if err != nil {
 		fmt.Println("Error in Search clSetKernelArg : ", err)
 		return 0, []byte{0}
@@ -531,9 +531,7 @@ func (c *OpenCLMiner) Search(block pow.Block, stop <-chan struct{}, index int) (
 			fmt.Println("Error in Search clSetKernelArg : ", err)
 			return 0, []byte{0}
 		}
-		var argPos int
-		argPos = 3
-		err = d.searchKernel.SetArg(argPos, nonce)
+		err = d.searchKernel.SetArg(3, nonce)
 		if err != nil {
 			fmt.Println("Error in Search clSetKernelArg : ", err)
 			return 0, []byte{0}
